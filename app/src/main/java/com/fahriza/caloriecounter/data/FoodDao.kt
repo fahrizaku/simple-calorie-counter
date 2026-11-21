@@ -12,6 +12,15 @@ interface FoodDao {
     @Insert
     suspend fun insert(entry: FoodEntry)
 
+    @Insert
+    suspend fun insertAll(entries: List<FoodEntry>)
+
+    @Query("SELECT * FROM food_entries ORDER BY id")
+    suspend fun getAll(): List<FoodEntry>
+
+    @Query("DELETE FROM food_entries")
+    suspend fun deleteAll()
+
     @Update
     suspend fun update(entry: FoodEntry)
 

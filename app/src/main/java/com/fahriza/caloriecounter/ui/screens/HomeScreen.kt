@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -46,6 +47,7 @@ fun HomeScreen(vm: CalorieViewModel) {
 
     var showAddSheet by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
+    var showCloudDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
 
@@ -104,8 +106,13 @@ fun HomeScreen(vm: CalorieViewModel) {
                             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Hari berikutnya")
                         }
                     }
-                    IconButton(onClick = { showGoalDialog = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Target", tint = MaterialTheme.colorScheme.primary)
+                    Row {
+                        IconButton(onClick = { showCloudDialog = true }) {
+                            Icon(Icons.Default.Cloud, contentDescription = "Cloud backup", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { showGoalDialog = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Target", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
@@ -177,6 +184,10 @@ fun HomeScreen(vm: CalorieViewModel) {
                 editingEntry = null
             }
         )
+    }
+
+    if (showCloudDialog) {
+        CloudDialog(vm = vm, onDismiss = { showCloudDialog = false })
     }
 
     if (showDatePicker) {

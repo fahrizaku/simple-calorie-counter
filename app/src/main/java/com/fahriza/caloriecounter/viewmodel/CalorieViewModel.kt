@@ -7,6 +7,7 @@ import com.fahriza.caloriecounter.data.DailyTotal
 import com.fahriza.caloriecounter.data.EntryType
 import com.fahriza.caloriecounter.data.FoodEntry
 import com.fahriza.caloriecounter.repository.FoodRepository
+import com.fahriza.caloriecounter.sync.TursoException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,6 +18,13 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+sealed interface SyncState {
+    data object Idle : SyncState
+    data object Loading : SyncState
+    data class Success(val message: String) : SyncState
+    data class Error(val message: String) : SyncState
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CalorieViewModel(app: Application) : AndroidViewModel(app) {
@@ -37,6 +45,42 @@ class CalorieViewModel(app: Application) : AndroidViewModel(app) {
 
     val dailyTotals: StateFlow<List<DailyTotal>> = repo.getDailyTotals()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val tursoUrl: StateFlow<String> = repo.tursoUrl
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val tursoToken: StateFlow<String> = repo.tursoToken
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val lastBackup: StateFlow<Long> = repo.lastBackup
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
+    val syncState: StateFlow<SyncState> = _syncState
+
+    fun clearSyncState() { _syncState.value = SyncState.Idle }
+
+    fun backup(url: String, token: String) = runSync {
+        val n = repo.backupToCloud(url, token)
+        SyncState.Success("Backup berhasil ($n entri)")
+    }
+
+    fun restore(url: String, token: String) = runSync {
+        val n = repo.restoreFromCloud(url, token)
+        SyncState.Success("Restore berhasil ($n entri)")
+    }
+
+    private fun runSync(block: suspend () -> SyncState) {
+        if (_syncState.value == SyncState.Loading) return
+        _syncState.value = SyncState.Loading
+        viewModelScope.launch {
+            _syncState.value = try {
+                block()
+            } catch (e: TursoException) {
+                SyncState.Error(e.message ?: "Gagal")
+            } catch (e: Exception) {
+                SyncState.Error("Terjadi kesalahan: ${e.message}")
+            }
+        }
+    }
 
     fun selectDate(date: LocalDate) {
         // Tidak boleh mencatat untuk tanggal di masa depan.
