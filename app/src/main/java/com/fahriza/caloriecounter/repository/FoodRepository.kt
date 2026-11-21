@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -31,6 +32,14 @@ class FoodRepository(private val context: Context) {
 
     suspend fun setDailyGoal(goal: Int) {
         context.dataStore.edit { it[dailyGoalKey] = goal }
+    }
+
+    private val weightKey = floatPreferencesKey("weight_kg")
+
+    val weightKg: Flow<Float?> = context.dataStore.data.map { it[weightKey] }
+
+    suspend fun setWeightKg(weight: Float) {
+        context.dataStore.edit { it[weightKey] = weight }
     }
 
     // --- Cloud backup (Turso) ---

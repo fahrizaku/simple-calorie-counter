@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +19,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.fahriza.caloriecounter.ui.screens.HistoryScreen
 import com.fahriza.caloriecounter.ui.screens.HomeScreen
+import com.fahriza.caloriecounter.ui.screens.OtherScreen
 import com.fahriza.caloriecounter.ui.theme.CalorieCounterTheme
 import com.fahriza.caloriecounter.viewmodel.CalorieViewModel
 
@@ -57,6 +59,12 @@ fun CalorieCounterApp() {
                     icon = { Icon(Icons.Default.DateRange, contentDescription = "History") },
                     label = { Text("Riwayat") }
                 )
+                NavigationBarItem(
+                    selected = currentRoute?.destination?.route == "other",
+                    onClick = { navController.navigate("other") { launchSingleTop = true } },
+                    icon = { Icon(Icons.Default.MoreHoriz, contentDescription = "Other") },
+                    label = { Text("Other") }
+                )
             }
         }
     ) { padding ->
@@ -72,6 +80,7 @@ fun CalorieCounterApp() {
                     navController.navigate("home") { launchSingleTop = true }
                 })
             }
+            composable("other") { OtherScreen(vm) }
         }
     }
 }
