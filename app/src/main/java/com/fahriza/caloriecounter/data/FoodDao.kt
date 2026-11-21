@@ -17,7 +17,7 @@ interface FoodDao {
     @Query("SELECT * FROM food_entries WHERE date = :date ORDER BY createdAt DESC")
     fun getEntriesByDate(date: String): Flow<List<FoodEntry>>
 
-    @Query("SELECT date, SUM(calories) as total FROM food_entries GROUP BY date ORDER BY date DESC LIMIT 30")
+    @Query("SELECT date, SUM(CASE WHEN type = 'BURNED' THEN -calories ELSE calories END) as total FROM food_entries GROUP BY date ORDER BY date DESC LIMIT 30")
     fun getDailyTotals(): Flow<List<DailyTotal>>
 }
 
