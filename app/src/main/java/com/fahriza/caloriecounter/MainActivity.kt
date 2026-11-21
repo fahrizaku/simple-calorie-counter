@@ -44,7 +44,10 @@ fun CalorieCounterApp() {
             NavigationBar {
                 NavigationBarItem(
                     selected = currentRoute?.destination?.route == "home",
-                    onClick = { navController.navigate("home") { launchSingleTop = true } },
+                    onClick = {
+                        vm.selectDate(java.time.LocalDate.now())
+                        navController.navigate("home") { launchSingleTop = true }
+                    },
                     icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                     label = { Text("Hari Ini") }
                 )
@@ -63,7 +66,12 @@ fun CalorieCounterApp() {
             modifier = Modifier.padding(padding)
         ) {
             composable("home") { HomeScreen(vm) }
-            composable("history") { HistoryScreen(vm) }
+            composable("history") {
+                HistoryScreen(vm, onOpenDay = { date ->
+                    vm.selectDate(date)
+                    navController.navigate("home") { launchSingleTop = true }
+                })
+            }
         }
     }
 }

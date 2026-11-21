@@ -34,5 +34,7 @@ class FoodRepository(private val context: Context) {
 
     suspend fun addEntry(entry: FoodEntry) = dao.insert(entry)
 
+    suspend fun updateEntry(entry: FoodEntry) = dao.update(entry)
+
     suspend fun deleteEntry(id: Int) = dao.delete(id)
 }

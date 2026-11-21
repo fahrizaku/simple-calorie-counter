@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun HistoryScreen(vm: CalorieViewModel) {
+fun HistoryScreen(vm: CalorieViewModel, onOpenDay: (String) -> Unit) {
     val dailyTotals by vm.dailyTotals.collectAsState()
     val dailyGoal by vm.dailyGoal.collectAsState()
 
@@ -50,7 +50,7 @@ fun HistoryScreen(vm: CalorieViewModel) {
             }
         } else {
             items(dailyTotals, key = { it.date }) { daily ->
-                HistoryItem(daily = daily, goal = dailyGoal)
+                HistoryItem(daily = daily, goal = dailyGoal, onClick = { onOpenDay(daily.date) })
             }
         }
 
@@ -59,7 +59,7 @@ fun HistoryScreen(vm: CalorieViewModel) {
 }
 
 @Composable
-private fun HistoryItem(daily: DailyTotal, goal: Int) {
+private fun HistoryItem(daily: DailyTotal, goal: Int, onClick: () -> Unit) {
     val progress = (daily.total.toFloat() / goal).coerceIn(0f, 1f)
     val overGoal = daily.total > goal
     val dateLabel = remember(daily.date) {
@@ -72,6 +72,7 @@ private fun HistoryItem(daily: DailyTotal, goal: Int) {
     }
 
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -96,6 +97,26 @@ private fun HistoryItem(daily: DailyTotal, goal: Int) {
                 color = if (overGoal) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Masuk ${daily.consumed}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Terbakar ${daily.burned}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Text(
+                    "Target $goal",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

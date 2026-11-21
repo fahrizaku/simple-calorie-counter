@@ -1,5 +1,6 @@
 package com.fahriza.caloriecounter.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,6 +8,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -22,14 +25,17 @@ import androidx.compose.ui.unit.sp
 import com.fahriza.caloriecounter.data.EntryType
 import com.fahriza.caloriecounter.data.FoodEntry
 import com.fahriza.caloriecounter.viewmodel.CalorieViewModel
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(vm: CalorieViewModel) {
-    val entries by vm.todayEntries.collectAsState()
+    val entries by vm.entries.collectAsState()
+    val selectedDate by vm.selectedDate.collectAsState()
     val dailyGoal by vm.dailyGoal.collectAsState()
 
     val consumed = entries.filter { it.type == EntryType.CONSUMED }.sumOf { it.calories }
@@ -40,9 +46,13 @@ fun HomeScreen(vm: CalorieViewModel) {
 
     var showAddSheet by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
 
-    val dateLabel = remember {
-        LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMM yyyy", Locale("id", "ID")))
+    val date = remember(selectedDate) { LocalDate.parse(selectedDate) }
+    val isToday = date == LocalDate.now()
+    val dateLabel = remember(date) {
+        date.format(DateTimeFormatter.ofPattern("EEEE, d MMM yyyy", Locale("id", "ID")))
     }
 
     Scaffold(
@@ -69,7 +79,31 @@ fun HomeScreen(vm: CalorieViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(dateLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { vm.selectDate(date.minusDays(1)) }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Hari sebelumnya")
+                        }
+                        Column(
+                            modifier = Modifier.clickable { showDatePicker = true }.padding(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                dateLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!isToday) {
+                                Text(
+                                    "Ketuk untuk ganti tanggal",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(onClick = { vm.selectDate(date.plusDays(1)) }, enabled = !isToday) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Hari berikutnya")
+                        }
+                    }
                     IconButton(onClick = { showGoalDialog = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Target", tint = MaterialTheme.colorScheme.primary)
                     }
@@ -83,21 +117,26 @@ fun HomeScreen(vm: CalorieViewModel) {
                     net = net,
                     goal = dailyGoal,
                     remaining = remaining,
-                    progress = progress
+                    progress = progress,
+                    title = if (isToday) "Netto hari ini" else "Netto"
                 )
             }
 
             if (entries.isNotEmpty()) {
                 item {
                     Text(
-                        "Hari ini",
+                        if (isToday) "Hari ini" else "Entri",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 items(entries, key = { it.id }) { entry ->
-                    FoodEntryItem(entry = entry, onDelete = { vm.deleteEntry(entry.id) })
+                    FoodEntryItem(
+                        entry = entry,
+                        onEdit = { editingEntry = entry },
+                        onDelete = { vm.deleteEntry(entry.id) }
+                    )
                 }
             } else {
                 item {
@@ -106,7 +145,7 @@ fun HomeScreen(vm: CalorieViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Belum ada data hari ini.\nTap + untuk tambah kalori.",
+                            if (isToday) "Belum ada data hari ini.\nTap + untuk tambah kalori." else "Belum ada data di tanggal ini.\nTap + untuk tambah kalori.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -129,6 +168,45 @@ fun HomeScreen(vm: CalorieViewModel) {
         )
     }
 
+    editingEntry?.let { entry ->
+        AddCalorieSheet(
+            initial = entry,
+            onDismiss = { editingEntry = null },
+            onConfirm = { calories, note, type ->
+                vm.updateEntry(entry, calories, note, type)
+                editingEntry = null
+            }
+        )
+    }
+
+    if (showDatePicker) {
+        val todayMillis = LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= todayMillis
+            }
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let {
+                            vm.selectDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
+                        }
+                        showDatePicker = false
+                    }
+                ) { Text("Pilih") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Batal") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+
     if (showGoalDialog) {
         GoalDialog(
             currentGoal = dailyGoal,
@@ -143,7 +221,7 @@ fun HomeScreen(vm: CalorieViewModel) {
 
 @Composable
 private fun CalorieSummaryCard(
-    consumed: Int, burned: Int, net: Int, goal: Int, remaining: Int, progress: Float
+    consumed: Int, burned: Int, net: Int, goal: Int, remaining: Int, progress: Float, title: String
 ) {
     val overGoal = remaining < 0
 
@@ -159,7 +237,7 @@ private fun CalorieSummaryCard(
                 verticalAlignment = Alignment.Bottom
             ) {
                 Column {
-                    Text("Netto hari ini", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
                         "$net kkal",
                         fontSize = 36.sp,
@@ -194,11 +272,12 @@ private fun CalorieSummaryCard(
 }
 
 @Composable
-private fun FoodEntryItem(entry: FoodEntry, onDelete: () -> Unit) {
+private fun FoodEntryItem(entry: FoodEntry, onEdit: () -> Unit, onDelete: () -> Unit) {
     val isBurned = entry.type == EntryType.BURNED
     var showConfirm by remember { mutableStateOf(false) }
 
     Card(
+        onClick = onEdit,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -261,10 +340,14 @@ private fun FoodEntryItem(entry: FoodEntry, onDelete: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddCalorieSheet(onDismiss: () -> Unit, onConfirm: (Int, String, EntryType) -> Unit) {
-    var caloriesText by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(EntryType.CONSUMED) }
+private fun AddCalorieSheet(
+    initial: FoodEntry? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, String, EntryType) -> Unit
+) {
+    var caloriesText by remember { mutableStateOf(initial?.calories?.toString() ?: "") }
+    var note by remember { mutableStateOf(initial?.note ?: "") }
+    var selectedType by remember { mutableStateOf(initial?.type ?: EntryType.CONSUMED) }
     val calories = caloriesText.toIntOrNull()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -272,7 +355,7 @@ private fun AddCalorieSheet(onDismiss: () -> Unit, onConfirm: (Int, String, Entr
             modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Tambah Kalori", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(if (initial == null) "Tambah Kalori" else "Edit Entri", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
             // Toggle Masuk / Terbakar
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
