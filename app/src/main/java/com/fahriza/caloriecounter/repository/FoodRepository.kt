@@ -75,7 +75,7 @@ class FoodRepository(private val context: Context) {
         saveTursoConfig(url, token)
         val entries = dao.getAll()
         val goal = dailyGoal.first()
-        client.replaceBackup(entries, goal, weightKg.first())
+        client.replaceBackup(entries, goal, weightKg.first(), context.dataStore.data.first()[combosKey])
         context.dataStore.edit { it[lastBackupKey] = System.currentTimeMillis() }
         return entries.size
     }
@@ -93,6 +93,10 @@ class FoodRepository(private val context: Context) {
         }
         backup.dailyGoal?.takeIf { it > 0 }?.let { setDailyGoal(it) }
         backup.weightKg?.takeIf { it > 0f }?.let { setWeightKg(it) }
+        backup.combosJson?.let { json ->
+            // Hanya dipulihkan jika JSON valid (tidak kosong setelah di-parse).
+            if (combosFromJson(json).isNotEmpty()) context.dataStore.edit { it[combosKey] = json }
+        }
         return backup.entries.size
     }
 
