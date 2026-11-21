@@ -4,17 +4,21 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.fahriza.caloriecounter.data.Combo
 import com.fahriza.caloriecounter.data.DailyTotal
 import com.fahriza.caloriecounter.data.EntryType
 import com.fahriza.caloriecounter.data.FoodEntry
+import com.fahriza.caloriecounter.data.IntervalConfig
 import com.fahriza.caloriecounter.data.Workout
 import com.fahriza.caloriecounter.data.WorkoutSession
+import com.fahriza.caloriecounter.data.buildPhases
 import com.fahriza.caloriecounter.repository.FoodRepository
 import com.fahriza.caloriecounter.sync.TursoException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -22,6 +26,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 sealed interface SyncState {
     data object Idle : SyncState
@@ -136,8 +141,75 @@ class CalorieViewModel(app: Application) : AndroidViewModel(app) {
     private val _session = MutableStateFlow<WorkoutSession?>(null)
     val session: StateFlow<WorkoutSession?> = _session
 
-    fun startSession(workout: Workout, targetSeconds: Int?) {
-        _session.value = WorkoutSession(workout, targetSeconds, runningSince = SystemClock.elapsedRealtime())
+    fun startSession(workout: Workout, targetSeconds: Int?, interval: IntervalConfig? = null) {
+        _session.value = WorkoutSession(
+            title = workout.name,
+            met = workout.met,
+            targetSeconds = targetSeconds,
+            interval = interval,
+            runningSince = SystemClock.elapsedRealtime()
+        )
+    }
+
+    fun startComboSession(combo: Combo) {
+        val phases = buildPhases(combo)
+        if (phases.isEmpty()) return
+        _session.value = WorkoutSession(
+            title = combo.name,
+            met = 0.0,
+            targetSeconds = null,
+            phases = phases,
+            runningSince = SystemClock.elapsedRealtime()
+        )
+    }
+
+    val userCombos: StateFlow<List<Combo>> = repo.userCombos
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _draft = MutableStateFlow<Combo?>(null)
+    val draft: StateFlow<Combo?> = _draft
+
+    fun newDraft() {
+        _draft.value = Combo(
+            id = UUID.randomUUID().toString(),
+            name = "",
+            description = "",
+            steps = emptyList(),
+            rounds = 3
+        )
+    }
+
+    fun editDraft(combo: Combo) {
+        _draft.value =
+            if (combo.builtIn) combo.copy(id = UUID.randomUUID().toString(), name = "${combo.name} (salinan)", builtIn = false)
+            else combo
+    }
+
+    fun updateDraft(combo: Combo) {
+        _draft.value = combo
+    }
+
+    fun discardDraft() {
+        _draft.value = null
+    }
+
+    fun saveDraft() {
+        val d = _draft.value ?: return
+        viewModelScope.launch {
+            val current = repo.userCombos.first()
+            val saved = d.copy(name = d.name.trim(), builtIn = false)
+            val updated =
+                if (current.any { it.id == saved.id }) current.map { if (it.id == saved.id) saved else it }
+                else current + saved
+            repo.saveUserCombos(updated)
+            _draft.value = null
+        }
+    }
+
+    fun deleteCombo(id: String) {
+        viewModelScope.launch {
+            repo.saveUserCombos(repo.userCombos.first().filterNot { it.id == id })
+        }
     }
 
     fun pauseSession() {
@@ -159,7 +231,7 @@ class CalorieViewModel(app: Application) : AndroidViewModel(app) {
             if (s == null || s.finished) s
             else {
                 val elapsed = s.elapsedMs(SystemClock.elapsedRealtime())
-                val capped = s.targetSeconds?.let { minOf(elapsed, it * 1000L) } ?: elapsed
+                val capped = s.totalSeconds?.let { minOf(elapsed, it * 1000L) } ?: elapsed
                 s.copy(accumulatedMs = capped, runningSince = null, finished = true)
             }
         }

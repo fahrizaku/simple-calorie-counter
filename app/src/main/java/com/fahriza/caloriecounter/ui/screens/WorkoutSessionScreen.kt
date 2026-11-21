@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,10 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fahriza.caloriecounter.data.WorkoutSession
-import com.fahriza.caloriecounter.data.estimateKcal
 import com.fahriza.caloriecounter.viewmodel.CalorieViewModel
 import kotlinx.coroutines.delay
 
@@ -56,13 +58,20 @@ fun WorkoutSessionScreen(
     }
 
     LaunchedEffect(session.runningSince) {
+        var lastPhase = session.phaseKey(session.elapsedMs(SystemClock.elapsedRealtime()) / 1000)
         while (session.isRunning) {
             now = SystemClock.elapsedRealtime()
-            val target = session.targetSeconds
-            if (target != null && session.elapsedMs(now) >= target * 1000L) {
+            val elapsed = session.elapsedMs(now)
+            val total = session.totalSeconds
+            if (total != null && elapsed >= total * 1000L) {
                 vibrateDone(context)
                 vm.finishSession()
                 break
+            }
+            val phase = session.phaseKey(elapsed / 1000)
+            if (phase != lastPhase) {
+                lastPhase = phase
+                vibrateShort(context)
             }
             delay(200)
         }
@@ -70,8 +79,12 @@ fun WorkoutSessionScreen(
 
     val elapsedMs = session.elapsedMs(now)
     val elapsedSec = elapsedMs / 1000
-    val kcal = estimateKcal(session.workout.met, weightKg, elapsedSec)
+    val activeSec = session.activeSeconds(elapsedSec)
+    val kcal = session.kcal(weightKg, elapsedSec)
     val target = session.targetSeconds
+    val iv = session.interval
+    val phases = session.phases
+    val activeOnly = iv != null || phases != null
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -79,14 +92,17 @@ fun WorkoutSessionScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            session.workout.name,
+            session.title,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
 
         if (session.finished) {
-            val minutes = Math.round(elapsedSec / 60.0).coerceAtLeast(1)
+            val minutes = Math.round(activeSec / 60.0).coerceAtLeast(1)
+            var kcalText by rememberSaveable { mutableStateOf(kcal.toString()) }
+            val kcalValue = kcalText.toIntOrNull()
+
             Text(
                 "Latihan selesai",
                 style = MaterialTheme.typography.titleMedium,
@@ -94,25 +110,42 @@ fun WorkoutSessionScreen(
                 modifier = Modifier.padding(top = 8.dp)
             )
             Text(
-                formatTime(elapsedSec),
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 24.dp)
+                if (activeOnly) "Waktu aktif" else "Durasi",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 16.dp)
             )
             Text(
-                "≈ $kcal kkal terbakar",
-                style = MaterialTheme.typography.titleLarge,
+                formatTime(activeSec),
+                style = MaterialTheme.typography.displayLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Perkiraan app: $kcal kkal",
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(top = 8.dp)
             )
             if (weightEstimated) EstimatedWeightNote(weightKg)
+            OutlinedTextField(
+                value = kcalText,
+                onValueChange = { kcalText = it.filter { c -> c.isDigit() } },
+                label = { Text("Kalori yang dicatat (kkal)") },
+                supportingText = { Text("Bisa diganti, misalnya dengan angka dari jam tangan.") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                enabled = !added,
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp)
+            )
             Button(
                 onClick = {
-                    vm.addBurnedToday(kcal, "Olahraga: ${session.workout.name} $minutes menit")
-                    added = true
+                    kcalValue?.let {
+                        vm.addBurnedToday(it, "Olahraga: ${session.title} $minutes menit")
+                        added = true
+                    }
                 },
-                enabled = kcal > 0 && !added,
-                modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
+                enabled = kcalValue != null && kcalValue > 0 && !added,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             ) {
                 Text(if (added) "Sudah ditambahkan ke catatan" else "Tambah ke catatan")
             }
@@ -121,23 +154,90 @@ fun WorkoutSessionScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Tutup") }
         } else {
-            val displaySec = if (target != null) (target - elapsedSec).coerceAtLeast(0) else elapsedSec
-            Text(
-                if (target != null) "Sisa waktu" else "Waktu berjalan",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 16.dp)
-            )
-            Text(
-                formatTime(displaySec),
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Bold
-            )
-            if (target != null) {
+            if (phases != null) {
+                val idx = session.phaseIndexAt(elapsedSec)
+                val phase = phases[idx]
+                val into = (elapsedSec - session.phaseStartSec(idx)).coerceAtLeast(0)
+                val left = (phase.seconds - into).coerceAtLeast(0)
+                val next = phases.drop(idx + 1).firstOrNull { it.isWork }
+                val totalRounds = phases.last().round
+
+                Text(
+                    if (phase.isWork) phase.workoutName else "ISTIRAHAT",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    color = if (phase.isWork) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+                Text(
+                    "Ronde ${phase.round} dari $totalRounds",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    formatTime(left),
+                    style = MaterialTheme.typography.displayLarge,
+                    fontWeight = FontWeight.Bold
+                )
                 LinearProgressIndicator(
-                    progress = { (elapsedMs / (target * 1000f)).coerceIn(0f, 1f) },
+                    progress = { (into / phase.seconds.toFloat()).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
                 )
+                Text(
+                    if (next != null) "Berikutnya: ${next.workoutName}" else "Ini gerakan terakhir",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            } else if (iv != null) {
+                val t = elapsedSec.coerceAtMost(iv.totalSec.toLong())
+                val within = t % iv.cycleSec
+                val isWork = within < iv.workSec
+                val round = (t / iv.cycleSec).toInt() + 1
+                val phaseLen = if (isWork) iv.workSec else iv.restSec
+                val phaseLeft = if (isWork) iv.workSec - within else iv.cycleSec - within
+
+                Text(
+                    if (isWork) "KERJA" else "ISTIRAHAT",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isWork) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+                Text(
+                    "Ronde $round dari ${iv.rounds}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    formatTime(phaseLeft),
+                    style = MaterialTheme.typography.displayLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                LinearProgressIndicator(
+                    progress = { ((phaseLen - phaseLeft) / phaseLen.toFloat()).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                )
+            } else {
+                val displaySec = if (target != null) (target - elapsedSec).coerceAtLeast(0) else elapsedSec
+                Text(
+                    if (target != null) "Sisa waktu" else "Waktu berjalan",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+                Text(
+                    formatTime(displaySec),
+                    style = MaterialTheme.typography.displayLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                if (target != null) {
+                    LinearProgressIndicator(
+                        progress = { (elapsedMs / (target * 1000f)).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                    )
+                }
             }
             Text(
                 "≈ $kcal kkal",
@@ -192,5 +292,12 @@ private fun vibrateDone(context: Context) {
     val vibrator = context.getSystemService(Vibrator::class.java) ?: return
     if (vibrator.hasVibrator()) {
         vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
+    }
+}
+
+private fun vibrateShort(context: Context) {
+    val vibrator = context.getSystemService(Vibrator::class.java) ?: return
+    if (vibrator.hasVibrator()) {
+        vibrator.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
     }
 }

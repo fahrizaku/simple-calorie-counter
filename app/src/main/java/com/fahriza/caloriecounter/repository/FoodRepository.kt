@@ -11,6 +11,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.room.withTransaction
 import androidx.datastore.preferences.preferencesDataStore
 import com.fahriza.caloriecounter.data.AppDatabase
+import com.fahriza.caloriecounter.data.Combo
+import com.fahriza.caloriecounter.data.combosFromJson
+import com.fahriza.caloriecounter.data.combosToJson
 import com.fahriza.caloriecounter.data.DailyTotal
 import com.fahriza.caloriecounter.data.FoodEntry
 import com.fahriza.caloriecounter.sync.TursoClient
@@ -40,6 +43,14 @@ class FoodRepository(private val context: Context) {
 
     suspend fun setWeightKg(weight: Float) {
         context.dataStore.edit { it[weightKey] = weight }
+    }
+
+    private val combosKey = stringPreferencesKey("user_combos")
+
+    val userCombos: Flow<List<Combo>> = context.dataStore.data.map { combosFromJson(it[combosKey]) }
+
+    suspend fun saveUserCombos(combos: List<Combo>) {
+        context.dataStore.edit { it[combosKey] = combosToJson(combos) }
     }
 
     // --- Cloud backup (Turso) ---
