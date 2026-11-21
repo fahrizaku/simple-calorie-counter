@@ -12,7 +12,7 @@ import java.net.URL
 
 class TursoException(message: String) : Exception(message)
 
-data class CloudBackup(val entries: List<FoodEntry>, val dailyGoal: Int?)
+data class CloudBackup(val entries: List<FoodEntry>, val dailyGoal: Int?, val weightKg: Float?)
 
 /**
  * Klien minimal untuk Turso lewat HTTP API (Hrana over HTTP, /v2/pipeline).
@@ -31,7 +31,7 @@ class TursoClient(url: String, private val token: String) {
     }
 
     /** Snapshot penuh: isi tabel remote diganti dengan data lokal, atomik (gagal = rollback). */
-    suspend fun replaceBackup(entries: List<FoodEntry>, dailyGoal: Int) {
+    suspend fun replaceBackup(entries: List<FoodEntry>, dailyGoal: Int, weightKg: Float?) {
         val steps = JSONArray()
         var last = -1
         fun add(sql: String, args: List<JSONObject> = emptyList()) {
@@ -58,6 +58,9 @@ class TursoClient(url: String, private val token: String) {
             )
         }
         add("INSERT INTO app_settings (key, value) VALUES (?, ?)", listOf(text("daily_goal"), text(dailyGoal.toString())))
+        if (weightKg != null) {
+            add("INSERT INTO app_settings (key, value) VALUES (?, ?)", listOf(text("weight_kg"), text(weightKg.toString())))
+        }
         add("COMMIT")
         val commitStep = last
         // Jika salah satu langkah gagal, COMMIT tidak jalan dan transaksi dibatalkan.
@@ -108,8 +111,8 @@ class TursoClient(url: String, private val token: String) {
                 createdAt = r[6].toLong()
             )
         }
-        val goal = rows(results.getJSONObject(1)).firstOrNull { it[0] == "daily_goal" }?.get(1)?.toIntOrNull()
-        return CloudBackup(entries, goal)
+        val settings = rows(results.getJSONObject(1)).associate { it[0] to it[1] }
+        return CloudBackup(entries, settings["daily_goal"]?.toIntOrNull(), settings["weight_kg"]?.toFloatOrNull())
     }
 
     // --- helpers ---

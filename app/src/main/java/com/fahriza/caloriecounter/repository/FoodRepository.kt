@@ -64,7 +64,7 @@ class FoodRepository(private val context: Context) {
         saveTursoConfig(url, token)
         val entries = dao.getAll()
         val goal = dailyGoal.first()
-        client.replaceBackup(entries, goal)
+        client.replaceBackup(entries, goal, weightKg.first())
         context.dataStore.edit { it[lastBackupKey] = System.currentTimeMillis() }
         return entries.size
     }
@@ -81,6 +81,7 @@ class FoodRepository(private val context: Context) {
             dao.insertAll(backup.entries)
         }
         backup.dailyGoal?.takeIf { it > 0 }?.let { setDailyGoal(it) }
+        backup.weightKg?.takeIf { it > 0f }?.let { setWeightKg(it) }
         return backup.entries.size
     }
 
