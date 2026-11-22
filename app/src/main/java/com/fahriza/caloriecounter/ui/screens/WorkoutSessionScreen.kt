@@ -2,6 +2,10 @@ package com.fahriza.caloriecounter.ui.screens
 
 import android.app.Activity
 import android.content.Context
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -289,6 +293,7 @@ private fun formatTime(totalSeconds: Long): String {
 }
 
 private fun vibrateDone(context: Context) {
+    playTone(ToneGenerator.TONE_PROP_ACK, 700)
     val vibrator = context.getSystemService(Vibrator::class.java) ?: return
     if (vibrator.hasVibrator()) {
         vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
@@ -296,8 +301,20 @@ private fun vibrateDone(context: Context) {
 }
 
 private fun vibrateShort(context: Context) {
+    playTone(ToneGenerator.TONE_PROP_BEEP, 250)
     val vibrator = context.getSystemService(Vibrator::class.java) ?: return
     if (vibrator.hasVibrator()) {
         vibrator.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
+    }
+}
+
+/** Bunyi beep lewat volume media (tetap terdengar walau ponsel mode getar). */
+private fun playTone(tone: Int, durationMs: Int) {
+    try {
+        val generator = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+        generator.startTone(tone, durationMs)
+        Handler(Looper.getMainLooper()).postDelayed({ generator.release() }, durationMs + 200L)
+    } catch (_: RuntimeException) {
+        // Perangkat tanpa audio / gagal inisialisasi: cukup lewati, getar tetap jalan.
     }
 }
